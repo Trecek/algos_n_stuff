@@ -1,14 +1,14 @@
 # Algorithms and stuff
 I often find myself rewriting / optimizing algorithms and data structures implemented in other languages in rust. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
 
-## SIMD & GPU optimized functions
+### SIMD & GPU optimized functions
 Some of the implementations may utilize SIMD / cuda / OpenCL. If you find this repo, it may take a little work to get them to work for you. This repo just has basic implementations for these types of optimizations. When I use these for real world applications, they take a lot of case-by-case tuning, tweaking, and testing.
 
-# Distance algorithms
+## Distance algorithms
 
 During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo, but the only the levenshtein and hamming are from that repo. The different distance metrics are all under the Distance trait.
 
-## A sequence modified Myer's algorithm for fast fixed length distance calculations
+### A sequence modified Myer's algorithm for fast fixed length distance calculations
 
 There are two distance methods: SequenceLevenshteinDistance & SequenceLevenshteinDistanceSimd
 These distance functions are sequenced modified versions of the Myer's algorithm.
