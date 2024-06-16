@@ -23,9 +23,9 @@ impl SequenceLevenshteinDistanceSimd {
     }
 
     /*
-    TODO: use array size 4 for DNA, use something like "ord(nucleotide) % 4" instead of reencoding
-    Each element in simd peq is a size 8 element aray of u16 values
-    These values corresond the the Ascii value of the character
+    TODO: use array size 4 for DNA, use something like "ord(nucleotide) % 4" instead of re-encoding
+    Each element in simd peq is a size 8 element array of u16 values
+    These values correspond the the Ascii value of the character
     The simd peq array is size 256, one for each ascii character
     We have 8 elements for every element in the 256 array
     In my use cases I window sequence data, so this allows me to process 8 windows at a time
