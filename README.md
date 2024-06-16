@@ -2,7 +2,7 @@
 I often find myself rewriting / optimizing algorithms and data structures implemented in other languages into rust versions. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
 
 ### SIMD & GPU optimized functions
-Some of the implementations may utilize SIMD / cuda / OpenCL. If you find this repo, it may take a little work to get them to work for you. This repo just has basic implementations for these types of optimizations. When I use these for real world applications, they take a lot of case-by-case tuning, tweaking, and testing.
+Some of the implementations may utilize SIMD / cuda / OpenCL. If you want to use them, it may take a little work to get them to work for you. This repo only has basic implementations for these types of optimizations. When I use these for real world applications, they take a lot of case-by-case tuning, tweaking, and testing.
 
 ## Distance algorithms
 
