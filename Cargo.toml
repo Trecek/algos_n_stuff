@@ -1,0 +1,20 @@
+[package]
+name = "algos_n_stuff"
+version = "0.1.0"
+edition = "2021"
+description = "A library of ported/optimized algorithms and other useful code snippets"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[lib]
+name = "algos_n_stuff"
+path = "src/lib.rs"
+
+[[bin]]
+name = "algos_n_stuff"
+path = "src/main.rs"
+
+[[bench]]
+name = "benchmark"
+harness = false
