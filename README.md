@@ -6,7 +6,7 @@ Some of the implementations may utilize SIMD / cuda / OpenCL. If you want to use
 
 ## Distance algorithms
 
-During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo, but the only the levenshtein and hamming are from that repo. The different distance metrics are all under the Distance trait.
+During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo. The different distance metrics are all under the Distance trait.
 
 ### A sequence modified Myer's algorithm for fast fixed length distance calculations
 
