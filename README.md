@@ -1,5 +1,5 @@
 # Algorithms and stuff
-I often find myself rewriting / optimizing algorithms and data structures implemented in other languages in rust. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
+I often find myself rewriting / optimizing algorithms and data structures implemented in other languages into rust versions. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
 
 ## Algorithms
 - Myer's 1999 alogirthm modified for sequence modified levenshtein distance (seq-lev)
@@ -15,12 +15,13 @@ I often find myself rewriting / optimizing algorithms and data structures implem
 
 ## Distance algorithms
 
-During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo, but the only the levenshtein and hamming are from that repo. The different distance metrics are all under the Distance trait.
+During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo. The different distance metrics are all under the Distance trait.
 
 ### A sequence modified Myer's algorithm for fast fixed length distance calculations
 
-There are two distance methods: SequenceLevenshteinDistance & SequenceLevenshteinDistanceSimd
-These distance functions are sequenced modified versions of the Myer's algorithm.
+There are two distance methods that I almost exclusively use now: SequenceLevenshteinDistance & SequenceLevenshteinDistanceSimd 
+These distance functions are sequenced modified versions of the Myer's algorithm. 
+
 They have been adjusted to work in the context of next-gen sequencing (NGS) reads where deletions and insertions do not change the length of the string. This adjustment also allows windowing across strings to find sub-strings without breaking the metric properties of our distance metric. Which just means that our distance measurements will still obey euclidean geometry when windowing, which means we can use it with certain algos and data structures. This opens up some very high performance possibilities.
 
 This is the original [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3853030/) for sequence modified levenshtein distance.
