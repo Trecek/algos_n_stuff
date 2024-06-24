@@ -4,7 +4,7 @@ I often find myself rewriting / optimizing algorithms and data structures implem
 ## Algorithms
 - Myer's 1999 alogirthm modified for sequence modified levenshtein distance (seq-lev)
 - A windowing based simd variant of sequence modified levenshtein distance (a modified myers algo)
-- Bit packing + simd accelerated hamming distance. Very fast. Bases encoded into 3bits and packing continously into u64 values. So we compare bit by bit, then sum ccores based on index locations of words withing u64s.
+- Bit packing + simd accelerated hamming distance. Very fast. Bases encoded into 3bits and packing continously into u64 values. So we compare bit by bit, then sum scores based on index locations of words withing u64s.
 
 **TODO**:
 - precompute neighborhood methods
