@@ -6,13 +6,18 @@ use std::simd::*;
 use std::ops::BitAnd;
 use std::simd::num::SimdInt;
 
+const A: u8 = 0b011;
+const C: u8 = 0b110;
+const G: u8 = 0b101;
+const T: u8 = 0b000;
+
 // This is the size of the bit vector, corresponding to ascii characters
 pub const PEQ_SIZE: usize = 256;
 
 pub trait Distance<T: ?Sized> {
-    fn distance(&self, a: &T, b: &T) -> isize;
+    fn distance(&self, a: &T, b: &T) -> usize;
     // Input must be a byte slice for SIMD myers variant algorithms
-    fn find_distance(&self, t: &[u8], p: &[u8]) -> isize;
+    fn find_distance(&self, t: &[u8], p: &[u8]) -> usize;
 }
 
 pub struct SequenceLevenshteinDistanceSimd;
@@ -107,24 +112,24 @@ impl SequenceLevenshteinDistanceSimd {
 
 impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistanceSimd {
     #[inline(always)]
-    fn distance(&self, a: &T, b: &T) -> isize {
+    fn distance(&self, a: &T, b: &T) -> usize {
         let read = a.as_ref();
         let barcode = b.as_ref();
         let matches = self.sequence_levenshtein_simd(read, barcode);
         if matches.is_empty() {
-            read.len() as isize
+            read.len() as usize
         } else {
-            matches[0].0 as isize
+            matches[0].0 as usize
         }
     }
 
     #[inline(always)]
-    fn find_distance(&self, read: &[u8], barcode: &[u8]) -> isize {
+    fn find_distance(&self, read: &[u8], barcode: &[u8]) -> usize {
         let matches = self.sequence_levenshtein_simd(read, barcode);
         if matches.is_empty() {
-            read.len() as isize
+            read.len() as usize
         } else {
-            matches[0].0 as isize
+            matches[0].0 as usize
         }
     }
 }
@@ -139,7 +144,7 @@ impl SequenceLevenshteinDistance {
 
     // This is sequence levenshtein distance modified myers algorithm
     #[inline(always)]
-    fn sequence_levenshtein(&self, t: &[u8], n: usize, p: &[u8], m: usize) -> isize {
+    fn sequence_levenshtein(&self, t: &[u8], n: usize, p: &[u8], m: usize) -> usize {
         let mut min_last_col = n as i16;
         let mut score = n as i16;
         let mut peq = [0u16; PEQ_SIZE];
@@ -170,13 +175,13 @@ impl SequenceLevenshteinDistance {
                 min_last_col = score;
             }
         }
-        min_last_col as isize
+        min_last_col as usize
     }
 }
 
 impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistance {
     #[inline(always)]
-    fn distance(&self, a: &T, b: &T) -> isize {
+    fn distance(&self, a: &T, b: &T) -> usize {
         let t = a.as_ref();
         let p = b.as_ref();
 
@@ -191,7 +196,7 @@ impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistance {
     }
 
     #[inline(always)]
-    fn find_distance(&self, t: &[u8], p: &[u8]) -> isize {
+    fn find_distance(&self, t: &[u8], p: &[u8]) -> usize {
         let n = t.len();
         let m = p.len();
 
@@ -211,16 +216,81 @@ impl HammingDistance {
 }
 
 impl<T: AsRef<str> + ?Sized> Distance<T> for HammingDistance {
-    fn distance(&self, a: &T, b: &T) -> isize {
+    fn distance(&self, a: &T, b: &T) -> usize {
         let a = a.as_ref();
         let b = b.as_ref();
-        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as isize
+        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as usize
     }
 
-    fn find_distance(&self, a: &[u8], b: &[u8]) -> isize {
+    fn find_distance(&self, a: &[u8], b: &[u8]) -> usize {
         let a = std::str::from_utf8(a).unwrap();
         let b = std::str::from_utf8(b).unwrap();
-        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as isize
+        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as usize
+    }
+}
+
+pub struct HammingDistanceSimd;
+
+impl HammingDistanceSimd {
+    pub fn new() -> Self {
+        HammingDistanceSimd
+    }
+
+    fn encode_dna(sequence: &[u8]) -> Vec<u8> {
+        sequence
+            .iter()
+            .map(|&b| match b {
+                b'A' => A,
+                b'C' => C,
+                b'G' => G,
+                b'T' | b'U' => T,
+                _ => panic!("Invalid DNA base"),
+            })
+            .collect()
+    }
+
+    #[inline(always)]
+    fn hamming_distance_simd(&self, a: &[u8], b: &[u8]) -> usize {
+        let encoded_a = Self::encode_dna(a);
+        let encoded_b = Self::encode_dna(b);
+        
+        let min_len = encoded_a.len().min(encoded_b.len());
+        let max_len = encoded_a.len().max(encoded_b.len());
+        
+        // Process 64 bytes (128 nucleotides) at a time
+        let chunks = min_len / 64;
+        let mut distance = 0usize;
+
+        for i in 0..chunks {
+            let start = i * 64;
+            let a_chunk = u8x64::from_slice(&encoded_a[start..start + 64]);
+            let b_chunk = u8x64::from_slice(&encoded_b[start..start + 64]);
+            let xor = a_chunk ^ b_chunk;
+            distance += xor.to_array().iter().map(|&x| x.count_ones() as usize).sum::<usize>();
+        }
+
+        // Process remaining bytes
+        for i in (chunks * 64)..min_len {
+            distance += (encoded_a[i] ^ encoded_b[i]).count_ones() as usize;
+        }
+
+        // Add the difference in length to the distance
+        distance += 2 * (max_len - min_len);
+
+        // Divide by 2 because each difference contributes 2 to the XOR count
+        distance / 2
+    }
+}
+
+impl Distance<[u8]> for HammingDistanceSimd {
+    #[inline(always)]
+    fn distance(&self, a: &[u8], b: &[u8]) -> usize {
+        self.hamming_distance_simd(a, b)
+    }
+
+    #[inline(always)]
+    fn find_distance(&self, a: &[u8], b: &[u8]) -> usize {
+        self.hamming_distance_simd(a, b)
     }
 }
 
@@ -236,7 +306,7 @@ impl SequenceLevenshteinDistanceWagner {
 
     // Its not needless, using clippy suggestion WILL BREAK IT
     #[allow(clippy::needless_range_loop)]
-    fn wagner_distance(&self, s1: &[u8], s2: &[u8]) -> isize {
+    fn wagner_distance(&self, s1: &[u8], s2: &[u8]) -> usize {
         let len1 = s1.len();
         let len2 = s2.len();
         let mut current_row = vec![0; len2 + 1];
@@ -267,18 +337,18 @@ impl SequenceLevenshteinDistanceWagner {
         let min_last_row = *current_row.iter().min().unwrap();
         let min_last_col = previous_row[len2];
 
-        std::cmp::min(min_last_row as isize, min_last_col as isize)
+        std::cmp::min(min_last_row as usize, min_last_col as usize)
     }
 }
 
 impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistanceWagner {
-    fn distance(&self, a: &T, b: &T) -> isize {
+    fn distance(&self, a: &T, b: &T) -> usize {
         let s1 = a.as_ref();
         let s2 = b.as_ref();
         self.wagner_distance(s1, s2)
     }
 
-    fn find_distance(&self, s1: &[u8], s2: &[u8]) -> isize {
+    fn find_distance(&self, s1: &[u8], s2: &[u8]) -> usize {
         self.wagner_distance(s1, s2)
     }
 }
@@ -292,7 +362,7 @@ impl LevenshteinDistance {
         LevenshteinDistance
     }
 
-    fn levenshtein_distance(&self, a: &str, b: &str) -> isize {
+    fn levenshtein_distance(&self, a: &str, b: &str) -> usize {
         if a == b {
             return 0;
         }
@@ -301,11 +371,11 @@ impl LevenshteinDistance {
         let b_len = b.chars().count();
 
         if a_len == 0 {
-            return b_len as isize;
+            return b_len as usize;
         }
 
         if b_len == 0 {
-            return a_len as isize;
+            return a_len as usize;
         }
 
         let mut res = 0;
@@ -336,18 +406,18 @@ impl LevenshteinDistance {
             }
         }
 
-        res as isize
+        res as usize
     }
 }
 
 impl<T: AsRef<str> + ?Sized + Clone> Distance<T> for LevenshteinDistance {
-    fn distance(&self, a: &T, b: &T) -> isize {
+    fn distance(&self, a: &T, b: &T) -> usize {
         let a = a.as_ref();
         let b = b.as_ref();
         self.levenshtein_distance(a, b)
     }
 
-    fn find_distance(&self, a: &[u8], b: &[u8]) -> isize {
+    fn find_distance(&self, a: &[u8], b: &[u8]) -> usize {
         let a = std::str::from_utf8(a).unwrap();
         let b = std::str::from_utf8(b).unwrap();
         self.levenshtein_distance(a, b)
@@ -381,5 +451,35 @@ mod tests {
         let expected_distance = 0;
         let matches = dist.sequence_levenshtein(window1, 8, barcode, 8);
         assert_eq!(matches, expected_distance);
+    }
+
+    #[test]
+    fn test_hamming_distance_simd() {
+        let dist = HammingDistanceSimd::new();
+
+        // Test case 1: Equal length strings
+        let a = b"ACGTACGT";
+        let b = b"ACGTATGT";
+        assert_eq!(dist.distance(a, b), 1);
+
+        // Test case 2: Different length strings
+        let a = b"ACGTACGT";
+        let b = b"ACGTATGTAA";
+        assert_eq!(dist.distance(a, b), 3);
+
+        // Test case 3: Empty strings
+        let a = b"";
+        let b = b"";
+        assert_eq!(dist.distance(a, b), 0);
+
+        // Test case 4: One empty string
+        let a = b"ACGTACGT";
+        let b = b"";
+        assert_eq!(dist.distance(a, b), 8);
+
+        // Test case 5: Long strings
+        let a = b"ACGTACGT".repeat(20);
+        let b = b"ACGTATGT".repeat(20);
+        assert_eq!(dist.distance(a.as_slice(), b.as_slice()), 20);
     }
 }
