@@ -1,8 +1,17 @@
 # Algorithms and stuff
 I often find myself rewriting / optimizing algorithms and data structures implemented in other languages into rust versions. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
 
-### SIMD & GPU optimized functions
-Some of the implementations may utilize SIMD / cuda / OpenCL. If you want to use them, it may take a little work to get them to work for you. This repo only has basic implementations for these types of optimizations. When I use these for real world applications, they take a lot of case-by-case tuning, tweaking, and testing.
+## Algorithms
+- Myer's 1999 alogirthm modified for sequence modified levenshtein distance (seq-lev)
+- A windowing based simd variant of sequence modified levenshtein distance (a modified myers algo)
+- Bit packing + simd accelerated hamming distance. Very fast. Bases encoded into 3bits and packing continously into u64 values. So we compare bit by bit, then sum ccores based on index locations of words withing u64s.
+
+**TODO**:
+- precompute neighborhood methods
+- mutation methods
+- Streaming/channel methods for computing seq-lev distance
+- DNA set generations with minimum edit distances. Greedy evo algorithms.
+- Bk-"tree" variant utilizing cosine law (reducing distance calculations) and gpu.
 
 ## Distance algorithms
 
