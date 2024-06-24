@@ -5,16 +5,22 @@ edition = "2021"
 description = "A library of ported/optimized algorithms and other useful code snippets"
 
 [dependencies]
+criterion = "0.5.1"
+crossbeam = "0.8.4"
+flamegraph = "0.6.5"
+fxhash = "0.2.1"
+num_cpus = "1.16.0"
+rand = "0.8.5"
+rayon = "1.10.0"
 serde = { version = "1.0", features = ["derive"] }
 
 [lib]
 name = "algos_n_stuff"
 path = "src/lib.rs"
 
-[[bin]]
-name = "algos_n_stuff"
-path = "src/main.rs"
-
 [[bench]]
 name = "benchmark"
 harness = false
+
+[profile.bench]
+debug = true
