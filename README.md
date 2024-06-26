@@ -1,38 +1,35 @@
-# Algorithms and stuff
-I often find myself rewriting / optimizing algorithms and data structures implemented in other languages into rust versions. I am hoping that this repo can help me organize them and perhaps make them easier to import and implement.
+# Algorithms and Data Structures in Rust
+
+I often find myself rewriting and optimizing algorithms and data structures implemented in other languages into Rust. This repo helps organize these implementations and makes them easier to import and use.
 
 ## Algorithms
-- Myer's 1999 alogirthm modified for sequence modified levenshtein distance (seq-lev)
-- A windowing based simd variant of sequence modified levenshtein distance (a modified myers algo)
-- Bit packing + simd accelerated hamming distance. Very fast. Bases encoded into 3bits and packing continously into u64 values. So we compare bit by bit, then sum scores based on index locations of words withing u64s.
+- **Myer's 1999 algorithm modified for sequence modified Levenshtein distance (seq-lev)**
+- **A SIMD variant of sequence modified Levenshtein distance with windowing (a modified Myer's algorithm)**
+- **Bit-packing and SIMD-accelerated Hamming distance:** very fast. Bases are encoded into 3 bits and packed continuously into `u64` values, allowing bit-by-bit comparison and summing scores based on index locations within `u64`s.
 
 **TODO**:
-- precompute neighborhood methods
-- mutation methods
+- Precompute neighborhood methods
+- Mutation methods
 - Streaming/channel methods for computing seq-lev distance
-- DNA set generations with minimum edit distances. Greedy evo algorithms.
-- Bk-"tree" variant utilizing cosine law (reducing distance calculations) and gpu.
+- DNA set generations with minimum edit distances using greedy evolutionary algorithms
+- BK-tree variant utilizing cosine law (reducing distance calculations) and GPU
 
-## Distance algorithms
+## Distance Algorithms
 
-During some work with bk trees I initially used the [bktree](https://crates.io/crates/bktree) crate as a starting point for another project. The layout was taken from that crate repo. The different distance metrics are all under the Distance trait.
+### Sequence Modified Myer's Algorithm for Fast Fixed-Length Distance Calculations
 
-### A sequence modified Myer's algorithm for fast fixed length distance calculations
-The distance functions SequenceLevenshteinDistance & SequenceLevenshteinDistanceSimd are sequenced modified versions of the Myer's algorithm. 
+The distance functions `SequenceLevenshteinDistance` and `SequenceLevenshteinDistanceSimd` are sequence-modified versions of Myer's algorithm. 
 
-They have been adjusted to work in the context of next-gen sequencing (NGS) reads where deletions and insertions do not change the length of the string. This adjustment also allows windowing across strings to find sub-strings without breaking the metric properties of our distance metric. Which means we can use it with certain algorithms and data structures. This opens up some very high performance possibilities.
+These versions are adjusted for next-gen sequencing (NGS) reads, where deletions and insertions do not change the string length. This allows windowing across strings to find substrings without breaking the metric properties, enabling use with certain algorithms and data structures for high-performance possibilities.
 
-This is the original [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3853030/) for sequence modified levenshtein distance.
+For more details, refer to the original [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3853030/) on sequence modified Levenshtein distance and another [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10614987/) that explains how to modify Myer's distance for NGS reads.
 
-This [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10614987/) is really what helped me see how we can modify Myer's distance for NGS reads. It has nice LD matrix examples for different cases of compared same length sequences.
+### How Myer's Algorithm Works and Its Modification for Sequence Levenshtein Distance
 
-### How Myer's algo works & how we can modify it for sequence levenshtein distance
-With sequencing data, we typically have millions of sequences to process, so we want fast methods for calculating distances (we also want to pair it w/ data structures like bk-trees). Myer's algorithm uses bitwise operations to calculate levenshtein edit distance, so its fast & easy to speed up with SIMD and GPU. If you're familiar with a levenshtein distance (LD) matrix, what Myer's does is calculate each value on the last column. The value we are looking for, LD, is the bottom right value in LD matrix. The values of the last column represent the # of insertions and deletions it would take to transform string B into string A. Since we just need to get to the corner value of the matrix, we can focus on the last column with just insertions and deletions.
+With sequencing data, we process millions of sequences, so fast distance calculation methods are crucial, especially when paired with data structures like BK-trees. Myer's algorithm uses bitwise operations to calculate Levenshtein edit distance, which can be sped up with SIMD and GPU.
 
-Myer's algorithm uses an array of size 256 to index each ASCII character. The character ascii encoding will match its position in vector. It processes each character in first string one by one, inserting the ASCII code into a bit vector (the 256 array) and comparing it to the bit vector of the other string. Since we only care about insertions and deletions, all it has to do is track shifts in the bits to determine if an insertion or deletion occurred. If we insert a value into the array that already exist, no shift. If we insert a character that wasn't in the vector, then it shifts the bits, so we must have an insertion / deletion.
+Myer's algorithm uses an array of size 256 to index each ASCII character, processing characters in the first string one by one. Insertions and deletions are tracked by shifts in the bits, determining if an insertion or deletion occurred.
 
-Now to modify for sequence levenshtein-distance, all we have to do is track the lowest score observed. If you look at this [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10614987/) you'll quickly notice that the sequence modified levenshtein distance is always the minimum value between the last row and last column, This means all we have to do is modify myers algorithm to track the minimum value. We also have to perform the calculation twice by swapping order of strings, since we need the last column and last row.
+To modify for sequence Levenshtein distance, we track the lowest score observed. The sequence modified Levenshtein distance is always the minimum value between the last row and column, requiring us to track the minimum value and perform the calculation twice by swapping the order of strings.
 
-This algorithm can be further improved by using a index array of size 4 (ATGC). This actually helps a lot. The algorithm is CPU memory bound for my use-cases. The biggest time crunch is on moving memory between RAM > Cache > CPU. So only reserving memory for a sized 4 array would be a big improvement of a size 256.
-
-There is also a SequenceLevenshteinDistanceWagner, which is a Wagner-Fischer algorithm modified for sequence levenshtein distance. This is for cases where your embedded sub-string is >32-64 characters.
+This algorithm can be further improved by using an index array of size 4 (ATGC), significantly reducing memory usage and improving performance. For cases where the embedded substring is >32-64 characters, `SequenceLevenshteinDistanceWagner` (a Wagner-Fischer algorithm modified for sequence Levenshtein distance) is used.
