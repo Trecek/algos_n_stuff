@@ -20,7 +20,7 @@ During some work with bk trees I initially used the [bktree](https://crates.io/c
 ### A sequence modified Myer's algorithm for fast fixed length distance calculations
 The distance functions SequenceLevenshteinDistance & SequenceLevenshteinDistanceSimd are sequenced modified versions of the Myer's algorithm. 
 
-They have been adjusted to work in the context of next-gen sequencing (NGS) reads where deletions and insertions do not change the length of the string. This adjustment also allows windowing across strings to find sub-strings without breaking the metric properties of our distance metric. Which just means that our distance measurements will still obey euclidean geometry when windowing, which means we can use it with certain algos and data structures. This opens up some very high performance possibilities.
+They have been adjusted to work in the context of next-gen sequencing (NGS) reads where deletions and insertions do not change the length of the string. This adjustment also allows windowing across strings to find sub-strings without breaking the metric properties of our distance metric. Which means we can use it with certain algorithms and data structures. This opens up some very high performance possibilities.
 
 This is the original [paper](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3853030/) for sequence modified levenshtein distance.
 
