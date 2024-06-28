@@ -1,10 +1,9 @@
-
 use serde::{Deserialize, Serialize};
+use std::ops::BitAnd;
 use std::simd::cmp::SimdOrd;
+use std::simd::num::SimdInt;
 use std::simd::num::SimdUint;
 use std::simd::*;
-use std::ops::BitAnd;
-use std::simd::num::SimdInt;
 
 const A: u8 = 0b011;
 const C: u8 = 0b110;
@@ -117,9 +116,9 @@ impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistanceSimd {
         let barcode = b.as_ref();
         let matches = self.sequence_levenshtein_simd(read, barcode);
         if matches.is_empty() {
-            read.len() as usize
+            read.len()
         } else {
-            matches[0].0 as usize
+            matches[0].0
         }
     }
 
@@ -127,9 +126,9 @@ impl<T: AsRef<[u8]> + ?Sized> Distance<T> for SequenceLevenshteinDistanceSimd {
     fn find_distance(&self, read: &[u8], barcode: &[u8]) -> usize {
         let matches = self.sequence_levenshtein_simd(read, barcode);
         if matches.is_empty() {
-            read.len() as usize
+            read.len()
         } else {
-            matches[0].0 as usize
+            matches[0].0
         }
     }
 }
@@ -219,13 +218,13 @@ impl<T: AsRef<str> + ?Sized> Distance<T> for HammingDistance {
     fn distance(&self, a: &T, b: &T) -> usize {
         let a = a.as_ref();
         let b = b.as_ref();
-        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as usize
+        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count()
     }
 
     fn find_distance(&self, a: &[u8], b: &[u8]) -> usize {
         let a = std::str::from_utf8(a).unwrap();
         let b = std::str::from_utf8(b).unwrap();
-        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count() as usize
+        a.chars().zip(b.chars()).filter(|(a, b)| a != b).count()
     }
 }
 
@@ -253,10 +252,10 @@ impl HammingDistanceSimd {
     fn hamming_distance_simd(&self, a: &[u8], b: &[u8]) -> usize {
         let encoded_a = Self::encode_dna(a);
         let encoded_b = Self::encode_dna(b);
-        
+
         let min_len = encoded_a.len().min(encoded_b.len());
         let max_len = encoded_a.len().max(encoded_b.len());
-        
+
         // Process 64 bytes (128 nucleotides) at a time
         let chunks = min_len / 64;
         let mut distance = 0usize;
@@ -266,7 +265,11 @@ impl HammingDistanceSimd {
             let a_chunk = u8x64::from_slice(&encoded_a[start..start + 64]);
             let b_chunk = u8x64::from_slice(&encoded_b[start..start + 64]);
             let xor = a_chunk ^ b_chunk;
-            distance += xor.to_array().iter().map(|&x| x.count_ones() as usize).sum::<usize>();
+            distance += xor
+                .to_array()
+                .iter()
+                .map(|&x| x.count_ones() as usize)
+                .sum::<usize>();
         }
 
         // Process remaining bytes
@@ -337,7 +340,7 @@ impl SequenceLevenshteinDistanceWagner {
         let min_last_row = *current_row.iter().min().unwrap();
         let min_last_col = previous_row[len2];
 
-        std::cmp::min(min_last_row as usize, min_last_col as usize)
+        std::cmp::min(min_last_row, min_last_col)
     }
 }
 
@@ -371,11 +374,11 @@ impl LevenshteinDistance {
         let b_len = b.chars().count();
 
         if a_len == 0 {
-            return b_len as usize;
+            return b_len;
         }
 
         if b_len == 0 {
-            return a_len as usize;
+            return a_len;
         }
 
         let mut res = 0;
@@ -406,11 +409,11 @@ impl LevenshteinDistance {
             }
         }
 
-        res as usize
+        res
     }
 }
 
-impl<T: AsRef<str> + ?Sized + Clone> Distance<T> for LevenshteinDistance {
+impl<T: AsRef<str> + Clone> Distance<T> for LevenshteinDistance {
     fn distance(&self, a: &T, b: &T) -> usize {
         let a = a.as_ref();
         let b = b.as_ref();

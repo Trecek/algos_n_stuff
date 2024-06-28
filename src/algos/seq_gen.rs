@@ -1,5 +1,4 @@
-
-/* 
+/*
 Implement a custom bit vector type to avoid the overhead of Vec<u8>.
 Use a more compact representation for neighbors, such as storing only the changed index and new value.
 Parallelize the neighbor generation using Rayon or another parallel processing library.
@@ -7,24 +6,7 @@ Parallelize the neighbor generation using Rayon or another parallel processing l
 use fxhash::FxHashSet;
 use std::simd::num::SimdUint;
 use std::simd::Simd;
-
-const A: u8 = 0b011;
-const C: u8 = 0b110;
-const G: u8 = 0b101;
-const T: u8 = 0b000;
-
-pub fn encode_dna(sequence: &str) -> Vec<u8> {
-    sequence
-        .bytes()
-        .map(|b| match b {
-            b'A' => A,
-            b'C' => C,
-            b'G' => G,
-            b'T' => T,
-            _ => panic!("Invalid DNA base"),
-        })
-        .collect()
-}
+// use crate::algos::common::*;
 
 // We could probably have something like (conceptually) a read ahead interator
 // It could push or queue characters onto a buffer while the heading function just
@@ -67,24 +49,12 @@ pub fn neighbors_simd(sequence: &[u8]) -> FxHashSet<Vec<u8>> {
                 // Ensure we don't exceed the bounds of the neighbor vector
                 let copy_len = modified_array.len().min(neighbor.len() - chunk_start);
                 // Copy the modified array back to the slice
-                neighbor[chunk_start..chunk_start + copy_len].copy_from_slice(&modified_array[..copy_len]);
+                neighbor[chunk_start..chunk_start + copy_len]
+                    .copy_from_slice(&modified_array[..copy_len]);
                 neighbors.insert(neighbor);
             }
         }
     }
 
     neighbors
-}
-
-pub fn decode_dna(encoded: &[u8]) -> String {
-    encoded
-        .iter()
-        .map(|&b| match b {
-            A => 'A',
-            C => 'C',
-            G => 'G',
-            T => 'T',
-            _ => panic!("Invalid encoded DNA base"),
-        })
-        .collect()
 }

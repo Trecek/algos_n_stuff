@@ -1,157 +1,140 @@
-use std::simd::u64x2;
-use rayon::prelude::*;
+use safe_arch::*;
+
+use crate::algos::common::*;
+use once_cell::sync::OnceCell;
+use std::simd::u64x4;
+use std::sync::Arc;
+
+const BITS_PER_BASE: usize = 3;
+const BASES_PER_U64: usize = 21; // 63 bits for bases, 1 bit unused
+
 /*
 We are bit packing 3bit encoded DNA bases
 Our words our fed in ascii, when we re-encode, we pack those bits into u64s
-We are packing bits as they appear regardless of word boundaries
 A single u64 could contain bits from multiple words
-We use SIMD to XOR all the data, this will give us a result of all base to base comparisons
-Our hamming score is the sum of 1s in the XOR result
-Since our word length is fixed, we can extract a words edit distance from the XOR result by index
+We use SIMD to XOR all the data, this will give us a result of all base2base comparisons
+Since our word length is fixed, we can easily extract a words edit distance from the XOR result by index
+Our hamming score is the sum of 1s in the XOR result (sum'ed on word range)
 */
-const BITS_PER_BASE: usize = 3;
-
-// Constants for DNA base encoding (as u8)
-const A: u8 = 0b011;
-const C: u8 = 0b110;
-const G: u8 = 0b101;
-const T: u8 = 0b000;
-
-fn encode_base(base: u8) -> u8 {
-    match base {
-        b'A' => A,
-        b'C' => C,
-        b'G' => G,
-        b'T' => T,
-        _ => panic!("Invalid DNA base"),
-    }
-}
-
-const K1: u64 = 0x5555555555555555; // binary: 0101...
-const K2: u64 = 0x3333333333333333; // binary: 00110011..
-const K4: u64 = 0x0f0f0f0f0f0f0f0f; // binary: 4 zeros, 4 ones ...
-
-// This worked faster than count_ones on my machines so far
-fn popcount64(mut x: u64) -> u32 {
-    x = x - ((x >> 1) & K1);
-    x = (x & K2) + ((x >> 2) & K2);
-    x = (x + (x >> 4)) & K4;
-    x = x + (x >> 8);
-    x = x + (x >> 16);
-    x = x + (x >> 32);
-    (x & 0x7f) as u32
-}
 
 pub struct CompactDNA {
-    data: Vec<u64>,
+    packed_data: Box<[u64x4]>,
     word_length: usize,
 }
 
 impl CompactDNA {
     fn new(sequences: &[Vec<u8>]) -> Self {
-        // TODO: implement checks for fixed word length
         let word_length = sequences[0].len();
-        let sequence_count = sequences.len();
-        let bits_per_sequence = word_length * BITS_PER_BASE;
-        let u64_per_sequence = (bits_per_sequence + 63) / 64;
-        let total_u64s = u64_per_sequence * sequence_count;
+        let num_u64s = (word_length + BASES_PER_U64 - 1) / BASES_PER_U64;
+        let num_u64x4 = (num_u64s + 3) / 4; // Round up to nearest multiple of 4
+        let mut packed_data = vec![u64x4::splat(0); sequences.len() * num_u64x4];
 
-        let mut compact_dna = CompactDNA {
-            data: vec![0; total_u64s],
+        for (i, seq) in sequences.iter().enumerate() {
+            let packed_sequence = &mut packed_data[i * num_u64x4..(i + 1) * num_u64x4];
+            for (j, &base) in seq.iter().enumerate() {
+                let shift = (j % BASES_PER_U64) * BITS_PER_BASE;
+                let u64_idx = j / BASES_PER_U64;
+                let simd_idx = u64_idx / 4;
+                let simd_offset = u64_idx % 4;
+                let mut arr = packed_sequence[simd_idx].to_array();
+                arr[simd_offset] |= (encode_dna(base) as u64) << shift;
+                packed_sequence[simd_idx] = u64x4::from_array(arr);
+            }
+        }
+
+        CompactDNA {
+            packed_data: packed_data.into_boxed_slice(),
             word_length,
-            //sequence_count,
-        };
-        compact_dna.push_sequences(sequences);
-        compact_dna
+        }
     }
 
-    // Pack base bits into u64s, a words bits can span multiple u64s, we use indexing to keep track
-    // interleave word pairs so they are consecutive in memory, increase cache hit rate
-    fn push_sequences(&mut self, sequences: &[Vec<u8>]) {
-        let mut current_u64_index = 0;
-        let mut current_bit_index = 0;
+    fn calculate_hamming_distance(&self) -> Vec<usize> {
+        let num_words = self.packed_data.len();
+        let num_pairs = num_words * (num_words - 1) / 2;
+        let mut results = vec![0; num_pairs];
 
-        for sequence in sequences {
-            for &base in sequence.iter().take(self.word_length) {
-                let encoded = encode_base(base) as u64;
-                self.data[current_u64_index] |= encoded << current_bit_index;
+        if is_x86_feature_detected!("avx2") {
+            self.calculate_hamming_distance_avx2(&mut results);
+        } else {
+            self.calculate_hamming_distance_fallback(&mut results);
+        }
 
-                current_bit_index += BITS_PER_BASE;
-                if current_bit_index >= 64 {
-                    current_u64_index += 1;
-                    current_bit_index = 0;
+        results
+    }
+
+    #[inline(always)]
+    fn calculate_hamming_distance_avx2(&self, results: &mut [usize]) {
+        let num_words = self.packed_data.len();
+        let word_length = self.word_length;
+        let used_bits = word_length * BITS_PER_BASE;
+        let full_u64_count = used_bits / 64;
+        let remaining_bits = used_bits % 64;
+
+        for i in 0..num_words {
+            for j in (i + 1)..num_words {
+                let mut total_diff = 0;
+
+                // Process full u64s
+                for k in 0..full_u64_count {
+                    let xor_result = self.packed_data[i].to_array()[k] ^ self.packed_data[j].to_array()[k];
+                    total_diff += xor_result.count_ones();
                 }
-            }
-            
-            // Move to the next u64 for the next sequence
-            if current_bit_index > 0 {
-                current_u64_index += 1;
-                current_bit_index = 0;
+
+                // Process remaining bits
+                if remaining_bits > 0 {
+                    let mask = (1u64 << remaining_bits) - 1;
+                    let xor_result = self.packed_data[i].to_array()[full_u64_count] ^ self.packed_data[j].to_array()[full_u64_count];
+                    let masked_xor = xor_result & mask;
+                    total_diff += masked_xor.count_ones();
+                }
+
+                let pair_diff = total_diff as usize / 2;
+
+                let pair_index = i * (num_words - 1) - (i * (i + 1) / 2) + j - 1;
+                results[pair_index] = pair_diff;
             }
         }
     }
+    #[inline(always)]
+    fn calculate_hamming_distance_fallback(&self, results: &mut [usize]) {
+        let num_words = self.packed_data.len();
 
-    fn calculate_hamming_distance(&self, index_a: usize, index_b: usize) -> usize {
-        let bits_per_sequence = self.word_length * BITS_PER_BASE;
-        let u64_per_sequence = (bits_per_sequence + 63) / 64;
-        let start_a = index_a * u64_per_sequence;
-        let start_b = index_b * u64_per_sequence;
+        for i in 0..num_words {
+            for j in (i + 1)..num_words {
+                if j + 2 < num_words {
+                    prefetch_t2(&self.packed_data[j + 2]);
+                }
 
-        // Determine the number of full u64x2 operations and any remaining u64
-        let full_simd_ops = u64_per_sequence / 2;
-        let has_remainder = u64_per_sequence % 2 != 0;
+                let xor_result = self.packed_data[i] ^ self.packed_data[j];
+                let pair_diff = xor_result.to_array().iter()
+                    .map(|&v| v.count_ones() as usize) // Use count_ones here
+                    .sum::<usize>() / 2;
 
-        // Perform SIMD XOR and popcount
-        let mut total_diff = 0u32;
-
-        // Process full u64x2 chunks
-        for i in 0..full_simd_ops {
-            let a = u64x2::from_array([self.data[start_a + 2*i], self.data[start_a + 2*i + 1]]);
-            let b = u64x2::from_array([self.data[start_b + 2*i], self.data[start_b + 2*i + 1]]);
-            let xor = a ^ b;
-
-            total_diff += popcount64(xor[0]) + popcount64(xor[1]);
+                let pair_index = i * (num_words - 1) - (i * (i + 1) / 2) + j - 1;
+                results[pair_index] = pair_diff;
+            }
         }
-
-        // Handle the remainder u64 if it exists
-        if has_remainder {
-            let last_index = 2 * full_simd_ops;
-            let last_xor = self.data[start_a + last_index] ^ self.data[start_b + last_index];
-            total_diff += popcount64(last_xor);
-        }
-
-        // Handle the last u64 if it's not fully used
-        if bits_per_sequence % 64 != 0 {
-            let mask = (1u64 << (bits_per_sequence % 64)) - 1;
-            let last_xor = self.data[start_a + u64_per_sequence - 1] ^ self.data[start_b + u64_per_sequence - 1];
-            total_diff -= popcount64(last_xor) - popcount64(last_xor & mask);
-        }
-
-        total_diff as usize / 2
     }
-
 }
 
-// placeholder struct
 pub struct BitHamProcessor {
+    compact_dna: Arc<OnceCell<CompactDNA>>,
 }
 
 impl BitHamProcessor {
     pub fn new() -> Self {
-        BitHamProcessor { }
+        BitHamProcessor {
+            compact_dna: Arc::new(OnceCell::new()),
+        }
     }
 
-    pub fn process_sequences(&self, sequences: &[Vec<u8>]) -> Vec<usize> {
-        let compact_dna = CompactDNA::new(sequences);
+    pub fn initialize(&self, sequences: &[Vec<u8>]) {
+        self.compact_dna.get_or_init(|| CompactDNA::new(sequences));
+    }
 
-        // Generate pairs to be compared for edit distance calculation
-        (0..sequences.len())
-            .into_par_iter()
-            .flat_map(|i| {
-                ((i + 1)..sequences.len()).into_par_iter().map(move |j| (i, j))
-            })
-            .map(|(i, j)| compact_dna.calculate_hamming_distance(i, j))
-            .collect()
+    pub fn process_sequences(&self) -> Vec<usize> {
+        let compact_dna = Arc::clone(&self.compact_dna);
+        compact_dna.get().unwrap().calculate_hamming_distance()
     }
 }
 
@@ -160,11 +143,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_dna_stream_processor() {
+    fn test_bit_ham_small() {
         let sequences = vec![
-            b"ATCGATCGATCGATCGATCGA".to_vec(),
-            b"TAGCTAGCTAGCTAGCTAGCT".to_vec(),
-            b"GCATGCATGCATGCATGCATG".to_vec(),
+            b"ATCG".to_vec(),
+            b"TAGC".to_vec(),
+            b"ATCC".to_vec(),
+            b"TACC".to_vec(),
+            b"GTCA".to_vec(),
         ];
 
         println!("Input sequences:");
@@ -173,24 +158,26 @@ mod tests {
         }
 
         let processor = BitHamProcessor::new();
-
-        let results = processor.process_sequences(&sequences);
+        processor.initialize(&sequences);
+        let results = processor.process_sequences();
 
         println!("Results: {:?}", results);
 
-        assert_eq!(results.len(), 3, "Expected 3 pairwise comparisons");
+        assert_eq!(results.len(), 10, "Expected 10 pairwise comparisons");
 
+        let expected_distances = [4, 1, 3, 2, 3, 1, 4, 2, 2, 3];
+        println!("Expected distances: {:?}", expected_distances);
         for (i, &distance) in results.iter().enumerate() {
-            println!("Pair {}: Distance = {}", i, distance);
             assert_eq!(
-                distance, 21,
-                "Distance should be 21 for completely different sequences"
+                distance, expected_distances[i],
+                "Pair {}: Expected distance = {}, got = {}",
+                i, expected_distances[i], distance
             );
         }
     }
 
     #[test]
-    fn test_dna_stream_processor_diff() {
+    fn test_bit_ham_long() {
         let sequences = vec![
             b"ATCGATCGATCGATCGATCGA".to_vec(),
             b"TAGCTAGCTAGCTAGCTAGGA".to_vec(),
@@ -204,21 +191,19 @@ mod tests {
         }
 
         let processor = BitHamProcessor::new();
-
-        let results = processor.process_sequences(&sequences);
+        processor.initialize(&sequences);
+        let results = processor.process_sequences();
 
         println!("Results: {:?}", results);
 
         assert_eq!(results.len(), 6, "Expected 6 pairwise comparisons");
 
-        // Expected distances for each pair
         let expected_distances = [19, 21, 17, 21, 21, 19];
-
-        for (i, &expected_distance) in expected_distances.iter().enumerate() {
+        for (i, &distance) in results.iter().enumerate() {
             assert_eq!(
-                results[i], expected_distance,
+                distance, expected_distances[i],
                 "Pair {}: Expected distance = {}, got = {}",
-                i, expected_distance, results[i]
+                i, expected_distances[i], distance
             );
         }
     }
